@@ -1,0 +1,26 @@
+{
+  "beamngWeather_toggleRain": {
+    "cat": "gameplay", "order": 900, "ctx": "tlua",
+    "onDown": "if beamngWeather_rain then beamngWeather_rain.toggleRain() end",
+    "title": "Rain Overhaul: Toggle rain",
+    "desc": "Start or stop the rain (BeamNG Weather mod)"
+  },
+  "beamngWeather_rainUp": {
+    "cat": "gameplay", "order": 901, "ctx": "tlua",
+    "onDown": "if beamngWeather_rain then beamngWeather_rain.changeIntensity(0.1) end",
+    "title": "Rain Overhaul: Heavier rain",
+    "desc": "Increase rain intensity by 10%"
+  },
+  "beamngWeather_rainDown": {
+    "cat": "gameplay", "order": 902, "ctx": "tlua",
+    "onDown": "if beamngWeather_rain then beamngWeather_rain.changeIntensity(-0.1) end",
+    "title": "Rain Overhaul: Lighter rain",
+    "desc": "Decrease rain intensity by 10%"
+  },
+  "beamngWeather_wipers": {
+    "cat": "gameplay", "order": 903, "ctx": "tlua",
+    "onDown": "if beamngWeather_rain then beamngWeather_rain.cycleWipers() end",
+    "title": "Rain Overhaul: Cycle wipers",
+    "desc": "Wipers: off / intermittent / slow / fast"
+  }
+}

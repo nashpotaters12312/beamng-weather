@@ -1,0 +1,12 @@
+{
+  "name": "Rain Overhaul",
+  "author": "BeamNG Weather",
+  "version": "1.0.0",
+  "description": "Rain control panel, plus raindrops and wipers on the windshield. Keep this app in your layout for windshield rain.",
+  "directive": "beamngWeatherRain",
+  "domElement": "<beamng-weather-rain></beamng-weather-rain>",
+  "css": { "width": "260px", "height": "290px", "top": "120px", "right": "10px" },
+  "types": ["ui.apps.categories.environment"],
+  "preserveAspectRatio": false,
+  "isAuxiliary": false
+}
