@@ -18,6 +18,7 @@ M.dependencies = {
   "beamngWeather_precipitation",
   "beamngWeather_wetRoads",
   "beamngWeather_wetBody",
+  "beamngWeather_wetDroplets",
   "beamngWeather_wetGrip",
 }
 
@@ -34,11 +35,13 @@ local defaults = {
   wetRate        = 1/45,  -- wetness gained per second at full intensity (fully wet in ~45 s)
   dryRate        = 1/240, -- wetness lost per second when dry (~4 min to dry out)
   wipers         = 0,     -- 0 off, 1 intermittent, 2 slow, 3 fast
+  quality        = "high", -- rain particle quality: low, medium, high, ultra
   features = {
     particles  = true,  -- falling rain
     sky        = true,  -- clouds, fog and wind follow the rain
     roads      = true,  -- wet roads
     body       = true,  -- wet car paint
+    droplets   = true,  -- water drops on car paint and windows
     grip       = false, -- less grip on wet roads (experimental, off by default)
     windshield = true,  -- drops on the windshield (UI overlay)
     allCameras = false, -- drops on the "lens" in outside cameras too
@@ -117,6 +120,16 @@ local function cameraName()
   return "unknown"
 end
 
+-- Cameras that look out through the windshield
+local IN_CAR_WORDS = {"driver", "cockpit", "interior", "inside", "onboard", "relative", "firstperson", "first_person", "dash"}
+local NOT_IN_CAR = {"hood", "bonnet", "bumper", "wheel", "rear", "mirror"}
+local function isInCarCamera(cam)
+  cam = string.lower(tostring(cam or ""))
+  for _, w in ipairs(NOT_IN_CAR) do if string.find(cam, w, 1, true) then return false end end
+  for _, w in ipairs(IN_CAR_WORDS) do if string.find(cam, w, 1, true) then return true end end
+  return false
+end
+
 local function playerSpeed()
   local veh = (getPlayerVehicle and getPlayerVehicle(0)) or (be and be:getPlayerVehicle(0))
   if not veh then return 0, nil end
@@ -138,7 +151,8 @@ local function sendUI()
     wipers     = settings.wipers,
     speed      = speed,
     camera     = cam,
-    inCar      = (cam == "driver" or cam == "onboard.driver" or cam == "relative"),
+    inCar      = isInCarCamera(cam),
+    quality    = settings.quality,
     features   = settings.features,
     wetSeconds = math.floor(1 / settings.wetRate + 0.5),
     drySeconds = math.floor(1 / settings.dryRate + 0.5),
@@ -156,6 +170,9 @@ local function pushToModules(force)
   end
   if beamngWeather_wetBody then
     beamngWeather_wetBody.apply(f.body and state.wetness or 0, force)
+  end
+  if beamngWeather_wetDroplets then
+    beamngWeather_wetDroplets.apply(f.droplets and state.wetness or 0, force)
   end
   if beamngWeather_wetGrip then
     beamngWeather_wetGrip.apply(f.grip and state.wetness or 0, force)
@@ -220,6 +237,16 @@ function M.setFeature(name, enabled)
   settings.features[name] = enabled and true or false
   saveSettingsSoon()
   pushToModules(true)
+  sendUI()
+end
+
+function M.setQuality(q)
+  if q ~= "low" and q ~= "medium" and q ~= "high" and q ~= "ultra" then return end
+  settings.quality = q
+  if beamngWeather_precipitation and beamngWeather_precipitation.setQuality then
+    beamngWeather_precipitation.setQuality(q)
+  end
+  saveSettingsSoon()
   sendUI()
 end
 
@@ -320,6 +347,9 @@ end
 function M.onExtensionLoaded()
   loadSettings()
   state.intensity, state.wetness = 0, 0
+  if beamngWeather_precipitation and beamngWeather_precipitation.setQuality then
+    beamngWeather_precipitation.setQuality(settings.quality)
+  end
   -- The mod can be turned on while a map is already loaded
   levelReady = levelIsLoaded()
   readyDelay = levelReady and READY_DELAY or 0

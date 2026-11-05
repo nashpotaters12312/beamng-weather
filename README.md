@@ -2,11 +2,12 @@
 
 A BeamNG.drive mod that adds a full rain system:
 
-- **Rain particles.** Uses the map's own rain if it has some. If not, it creates rain that follows the camera. The mod ships its own drop and splash textures.
+- **Rain particles.** Two layers of rain follow the camera: thin, dense streaks close to you, plus a farther layer for depth. They use the mod's own high-resolution textures, and there are four quality levels (Low, Medium, High, Ultra).
 - **Storm sky.** Clouds, fog and wind build up with the rain and go back to the map's sky afterwards.
 - **Wet roads.** Asphalt, concrete, road lines, kerbs and similar materials get smoother and gain a glossy water layer (clear coat), so they reflect lights, sky and cars. Wetness builds up over time in rain and dries slowly after it stops. Light rain only makes roads damp.
+- **Water drops on cars.** Beads of water on the paint, and bigger drops with short runs on the windows. They show from every camera and fade away as things dry.
 - **Wet car body.** All cars' paint gets a strong, smooth clear coat, so the bodywork looks soaked. The original paint comes back when it dries. If you repaint a car in the rain, your new paint is kept.
-- **Rain on the windshield.** In the driver camera, drops land on the glass. Big drops run down when you're slow. Above about 45 km/h the airflow pushes them up the glass, and they leave small beads behind.
+- **Rain on the windshield.** In the driver camera, drops land on the glass and bend the light like small lenses. Big drops run down and leave wet streaks when you're slow. Above about 45 km/h the airflow pushes them up the glass, and they leave small beads behind.
 - **Wipers.** Off, intermittent, slow and fast. They clear the drops they sweep over.
 - **Wet grip (experimental, off by default).** Paved surfaces lose grip in 4 steps (dry, damp, wet, soaked). The mod uses the game's own `ASPHALT_WET` values when it can find them.
 
@@ -42,6 +43,9 @@ A BeamNG.drive mod that adds a full rain system:
   beamngWeather_rain.setFeature("grip", false)
   beamngWeather_rain.setRates(45, 240)       -- seconds to get fully wet / to dry
   beamngWeather_wetRoads.dump()              -- list the materials treated as road
+  beamngWeather_rain.setQuality("ultra")     -- rain quality: low, medium, high, ultra
+  beamngWeather_wetDroplets.dump()           -- list the car materials that get water drops
+  beamngWeather_precipitation.useMapLook(true) -- use the map's rain textures instead of the mod's
   beamngWeather_rain.debug()                 -- show what the rain system is doing (send this if rain doesn't show)
   ```
 
@@ -58,7 +62,8 @@ mod/
     rain.lua            main controller: state, wetness timing, settings, UI data
     precipitation.lua   rain particles and storm sky
     wetRoads.lua        wet road materials
-    wetBody.lua         wet vehicle paint
+    wetBody.lua         wet vehicle paint (gloss)
+    wetDroplets.lua     water drops on vehicle paint and glass
     wetGrip.lua         wet ground-model friction (experimental)
   lua/ge/extensions/core/input/actions/beamngWeather.json   key binding actions
   ui/modules/apps/BeamNGWeatherRain/                         control panel + windshield overlay
@@ -75,5 +80,6 @@ This mod was written without the game running, so it needs testing in game. Ever
 - **Wet grip** relies on `be:setGroundModel`. Each grip step makes the game reload collision, which can cause a short hitch on big maps. If it misbehaves, turn off *Wet grip* in the app.
 - **Wet roads** finds road materials by name (`asphalt`, `road`, `concrete`, `line`...). Some maps name things differently. Use `beamngWeather_wetRoads.dump()` to see what was found. Terrain materials (dirt or asphalt painted onto the terrain itself) aren't changed.
 - **No puddles or spray yet.** There are no puddles and no water spray from tyres.
-- **Windshield drops are a screen overlay,** not a shader on the glass. They show in the driver camera. Turn on *Lens drops* for drops on the camera in outside views.
+- **Two kinds of windshield drops.** In the driver camera you get the animated overlay with wipers. The drop texture on the glass itself shows from every camera, but it doesn't move or get wiped. The panel shows which camera the mod detects. If your in-car camera isn't recognized, send me the name it shows.
+- **Car drops depend on the material slots.** They use a detail normal map. If a car's materials don't use that slot, its drops won't show; `beamngWeather_wetDroplets.dump()` lists the materials that get drops.
 - **No rain sound yet,** beyond whatever sound the map's own rain has.

@@ -84,6 +84,7 @@
         '<div class="bngw-section">',
           '<div class="bngw-label">Wipers</div>',
           '<div class="bngw-seg"><button ng-repeat="w in wiperNames track by $index" ng-class="{active: d.wipers == $index}" ng-click="setWipers($index)">{{ w }}</button></div>',
+          '<div class="bngw-hint" ng-style="{color: d.inCar ? \'#8fd0ff\' : \'#8d99a8\'}">{{ windshieldStatus() }}</div>',
         '</div>',
 
         '<div class="bngw-section">',
@@ -96,6 +97,10 @@
         '<button class="bngw-adv-toggle" ng-click="ui.advanced = !ui.advanced; saveUi()"><span>Advanced</span>',
           '<span ng-style="{transform: ui.advanced ? \'rotate(180deg)\' : \'none\'}" style="width:16px;height:16px;display:inline-block">', icon('chev'), '</span></button>',
         '<div ng-if="ui.advanced">',
+          '<div class="bngw-section">',
+            '<div class="bngw-label">Rain quality</div>',
+            '<div class="bngw-seg"><button ng-repeat="q in qualities" ng-class="{active: d.quality == q.key}" ng-click="setQuality(q.key)">{{ q.label }}</button></div>',
+          '</div>',
           '<div class="bngw-section">',
             '<div class="bngw-label">Time to soak <span class="val">{{ ui.wetSeconds }} s</span></div>',
             '<input class="bngw-slider" type="range" min="10" max="180" step="5" ng-model="ui.wetSeconds" ng-change="setRates()" ng-style="sliderStyle(ui.wetSeconds, 10, 180)">',
@@ -144,11 +149,22 @@
           { key: 'sky',        label: 'Storm sky',  tip: 'Clouds, fog and wind follow the rain' },
           { key: 'roads',      label: 'Wet roads',  tip: 'Glossy, reflective roads' },
           { key: 'body',       label: 'Wet paint',  tip: 'Soaked, glossy car paint' },
+          { key: 'droplets',   label: 'Car drops',  tip: 'Water beads on the paint and windows' },
           { key: 'windshield', label: 'Windshield', tip: 'Drops and wipers in the driver camera' },
           { key: 'allCameras', label: 'Lens drops', tip: 'Drops on the camera in outside views' },
           { key: 'grip',       label: 'Wet grip',   tip: 'Less grip on wet roads (experimental)' }
         ];
 
+        scope.qualities = [{ key: 'low', label: 'Low' }, { key: 'medium', label: 'Medium' }, { key: 'high', label: 'High' }, { key: 'ultra', label: 'Ultra' }];
+        scope.setQuality = function (q) { scope.d.quality = q; lua('beamngWeather_rain.setQuality("' + q + '")'); };
+        scope.windshieldStatus = function () {
+          var f = scope.d.features || {};
+          var cam = scope.d.camera || 'unknown';
+          if (!f.windshield) return 'Windshield drops are off';
+          if (scope.d.inCar) return 'Windshield drops on (camera: ' + cam + ')';
+          if (f.allCameras) return 'Lens drops on (camera: ' + cam + ')';
+          return 'Windshield drops show in the driver camera (now: ' + cam + '). Press C to switch.';
+        };
         scope.pct = function (v) { return Math.round((v || 0) * 100) + '%'; };
         scope.sliderStyle = function (v, min, max) {
           var p = ((v - min) / (max - min)) * 100;
@@ -251,25 +267,35 @@
       resize();
       window.addEventListener('resize', resize);
 
-      // Drop sprite, drawn once: clear water bead with a dark rim and highlight
+      // Drop sprite, drawn once. A water bead on glass works like a tiny lens:
+      // it shows the bright sky flipped, so it is light at the bottom and
+      // dark at the top, with a sharp rim and a small highlight.
       var sprite = document.createElement('canvas');
       sprite.width = sprite.height = 64;
       (function () {
         var s = sprite.getContext('2d');
-        var g = s.createRadialGradient(28, 26, 2, 32, 32, 30);
-        g.addColorStop(0.0, 'rgba(255,255,255,0.55)');
-        g.addColorStop(0.25, 'rgba(210,225,240,0.20)');
-        g.addColorStop(0.75, 'rgba(150,170,190,0.16)');
-        g.addColorStop(0.92, 'rgba(20,30,40,0.40)');
-        g.addColorStop(1.0, 'rgba(20,30,40,0.0)');
-        s.fillStyle = g;
+        var body = s.createLinearGradient(0, 4, 0, 60);
+        body.addColorStop(0.0, 'rgba(30,38,48,0.55)');
+        body.addColorStop(0.45, 'rgba(120,135,150,0.30)');
+        body.addColorStop(1.0, 'rgba(235,242,250,0.60)');
+        s.fillStyle = body;
+        s.beginPath(); s.arc(32, 32, 28, 0, Math.PI * 2); s.fill();
+        var rim = s.createRadialGradient(32, 32, 20, 32, 32, 30);
+        rim.addColorStop(0.0, 'rgba(0,0,0,0)');
+        rim.addColorStop(0.8, 'rgba(10,16,24,0.35)');
+        rim.addColorStop(1.0, 'rgba(10,16,24,0)');
+        s.fillStyle = rim;
         s.beginPath(); s.arc(32, 32, 30, 0, Math.PI * 2); s.fill();
-        s.fillStyle = 'rgba(255,255,255,0.75)';
-        s.beginPath(); s.arc(24, 22, 4, 0, Math.PI * 2); s.fill();
+        s.fillStyle = 'rgba(255,255,255,0.85)';
+        s.beginPath(); s.ellipse(24, 20, 5, 3.5, -0.5, 0, Math.PI * 2); s.fill();
+        s.fillStyle = 'rgba(255,255,255,0.35)';
+        s.beginPath(); s.ellipse(38, 50, 9, 3, 0, 0, Math.PI * 2); s.fill();
       })();
 
+      var trails = [];           // wet streaks left by running drops
+      var MAX_TRAILS = 600;
       var drops = [];
-      var MAX_DROPS = 900;
+      var MAX_DROPS = 1400;
       var spawnAcc = 0;
 
       // Wipers: two arms with pivots at the bottom of the screen
@@ -283,7 +309,7 @@
       function armLen() { return H * 0.78; }
 
       function spawnDrop(big) {
-        var r = (big ? 3 + Math.random() * 4 : 1 + Math.random() * 2.6) * scale;
+        var r = (big ? 4 + Math.random() * 5 : 1.4 + Math.random() * 3) * scale;
         drops.push({ x: Math.random() * W, y: Math.random() * H, r: r, vy: 0, vx: 0,
                      life: 1, stick: Math.random() * 1.5 });
       }
@@ -310,15 +336,22 @@
         var a0 = Math.min(wiper.angle, wiper.prevAngle) - 0.03;
         var a1 = Math.max(wiper.angle, wiper.prevAngle) + 0.03;
         var L = armLen(), ps = pivots();
-        for (var i = drops.length - 1; i >= 0; i--) {
-          var d = drops[i];
+        function swept(x, y) {
           for (var p = 0; p < ps.length; p++) {
-            var dx = d.x - ps[p].x, dy = ps[p].y - d.y;
+            var dx = x - ps[p].x, dy = ps[p].y - y;
             var dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < L * 0.12 || dist > L) continue;
             var a = Math.atan2(dy, dx);
-            if (a >= a0 && a <= a1) { drops.splice(i, 1); break; }
+            if (a >= a0 && a <= a1) return true;
           }
+          return false;
+        }
+        for (var i = drops.length - 1; i >= 0; i--) {
+          if (swept(drops[i].x, drops[i].y)) drops.splice(i, 1);
+        }
+        for (var k = trails.length - 1; k >= 0; k--) {
+          var tr = trails[k];
+          if (swept((tr.x1 + tr.x2) / 2, (tr.y1 + tr.y2) / 2)) trails.splice(k, 1);
         }
       }
 
@@ -347,14 +380,14 @@
         var show = f.windshield && (d.inCar || f.allCameras);
         ctx.clearRect(0, 0, W, H);
 
-        if (!show) { drops.length = 0; requestAnimationFrame(frame); return; }
+        if (!show) { drops.length = 0; trails.length = 0; requestAnimationFrame(frame); return; }
 
         var inCar = d.inCar;
         var speed = d.speed || 0;         // m/s
         var rain = d.intensity || 0;
 
         // New drops: more when it rains harder and when driving fast
-        var rate = rain * 140 * (inCar ? (1 + speed / 18) : 0.35);
+        var rate = rain * 220 * (inCar ? (1 + speed / 18) : 0.35);
         spawnAcc += rate * dt;
         while (spawnAcc >= 1 && drops.length < MAX_DROPS) {
           spawnAcc -= 1;
@@ -378,8 +411,10 @@
             p.vy = -grav + push;                 // screen up is negative y
             p.vx = inCar ? (Math.sin(p.y * 0.01 + p.x * 0.003) * 4 * scale) : 0;
             if (p.vy !== 0) {
+              var ox = p.x, oy = p.y;
               p.y -= p.vy * dt;
               p.x += p.vx * dt;
+              if (trails.length < MAX_TRAILS) trails.push({ x1: ox, y1: oy, x2: p.x, y2: p.y, w: p.r * 0.7, life: 1 });
               // Moving drops leave tiny beads behind
               if (Math.random() < 3 * dt && drops.length < MAX_DROPS) {
                 drops.push({ x: p.x, y: p.y + (p.vy > 0 ? p.r : -p.r), r: p.r * 0.35, vy: 0, vx: 0, life: p.life * 0.6, stick: 99 });
@@ -395,6 +430,17 @@
         if (inCar && rain > 0) {
           ctx.fillStyle = 'rgba(140,150,160,' + (0.05 * rain).toFixed(3) + ')';
           ctx.fillRect(0, 0, W, H);
+        }
+
+        // Wet streaks fade over a few seconds
+        ctx.lineCap = 'round';
+        for (var t = trails.length - 1; t >= 0; t--) {
+          var tr = trails[t];
+          tr.life -= dt * 0.35;
+          if (tr.life <= 0) { trails.splice(t, 1); continue; }
+          ctx.strokeStyle = 'rgba(200,214,228,' + (0.16 * tr.life).toFixed(3) + ')';
+          ctx.lineWidth = tr.w;
+          ctx.beginPath(); ctx.moveTo(tr.x1, tr.y1); ctx.lineTo(tr.x2, tr.y2); ctx.stroke();
         }
 
         for (var j = 0; j < drops.length; j++) {
