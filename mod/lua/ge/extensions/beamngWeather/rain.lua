@@ -115,6 +115,8 @@ local function sendUI()
     camera     = cam,
     inCar      = (cam == "driver" or cam == "onboard.driver" or cam == "relative"),
     features   = settings.features,
+    wetSeconds = math.floor(1 / settings.wetRate + 0.5),
+    drySeconds = math.floor(1 / settings.dryRate + 0.5),
   })
 end
 
@@ -199,6 +201,7 @@ function M.setRates(wetSeconds, drySeconds)
   if tonumber(wetSeconds) and wetSeconds > 0 then settings.wetRate = 1 / wetSeconds end
   if tonumber(drySeconds) and drySeconds > 0 then settings.dryRate = 1 / drySeconds end
   saveSettingsSoon()
+  sendUI()
 end
 
 function M.resetSettings()

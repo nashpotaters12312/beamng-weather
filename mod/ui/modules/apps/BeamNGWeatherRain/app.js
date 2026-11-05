@@ -1,62 +1,220 @@
 // BeamNG Weather: Rain Overhaul UI app
-// - A small control panel (rain on/off, intensity, wipers, feature toggles)
+// - Control panel: weather presets, rain intensity, live rain and road
+//   wetness meters, wipers, feature switches and timing settings.
 // - A full-screen canvas behind the other apps that draws raindrops on the
 //   windshield in the driver camera. Drops run down the glass, are pushed up
 //   by the wind at speed, and are cleared by the wipers.
-angular.module('beamng.apps')
-.directive('beamngWeatherRain', [function () {
-  return {
-    template:
-      '<div class="bngw-panel">' +
-        '<div class="bngw-title"><span>Rain Overhaul</span>' +
-          '<button class="bngw-btn" ng-class="{off: !d.rainOn}" ng-click="toggleRain()">{{ d.rainOn ? "Raining" : "Dry" }}</button></div>' +
-        '<div class="bngw-row"><span>Intensity</span>' +
-          '<input type="range" min="0.05" max="1" step="0.05" ng-model="ui.target" ng-change="setIntensity()">' +
-          '<span>{{ (ui.target * 100) | number:0 }}%</span></div>' +
-        '<div class="bngw-row"><span>Rain now</span><div class="bngw-bar"><div ng-style="{width: (d.intensity*100)+\'%\'}"></div></div></div>' +
-        '<div class="bngw-row"><span>Road wetness</span><div class="bngw-bar"><div ng-style="{width: (d.wetness*100)+\'%\'}"></div></div></div>' +
-        '<div class="bngw-row"><span>Wipers</span>' +
-          '<button class="bngw-btn" ng-class="{off: d.wipers == 0}" ng-click="cycleWipers()">{{ wiperNames[d.wipers] }}</button></div>' +
-        '<div class="bngw-checks">' +
-          '<label ng-repeat="f in featureList"><input type="checkbox" ng-model="d.features[f.key]" ng-change="setFeature(f.key)"> {{ f.label }}</label>' +
-        '</div>' +
+(function () {
+  // Small line icons (inherit the text color)
+  var I = {
+    cloud: '<path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.1 9.2 4.5 4.5 0 0 0 7 18z"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    drizzle: '<path d="M7 14h10a3.5 3.5 0 0 0 .5-6.96A5 5 0 0 0 7.8 6.5 4 4 0 0 0 7 14z"/><path d="M9 17v1M13 18v1M17 17v1"/>',
+    rain: '<path d="M7 13h10a3.5 3.5 0 0 0 .5-6.96A5 5 0 0 0 7.8 5.5 4 4 0 0 0 7 13z"/><path d="M8 16l-1 3M12 16l-1 3M16 16l-1 3"/>',
+    storm: '<path d="M7 12h10a3.5 3.5 0 0 0 .5-6.96A5 5 0 0 0 7.8 4.5 4 4 0 0 0 7 12z"/><path d="M13 13l-3 4h3l-2 4"/><path d="M7 15l-1 3M17 15l-1 3"/>',
+    downpour: '<path d="M7 11h10a3.5 3.5 0 0 0 .5-6.96A5 5 0 0 0 7.8 3.5 4 4 0 0 0 7 11z"/><path d="M6 14l-1.5 5M10 14l-1.5 5M14 14l-1.5 5M18 14l-1.5 5"/>',
+    minus: '<path d="M6 12h12"/>',
+    plus: '<path d="M6 12h12M12 6v12"/>',
+    chev: '<path d="M6 9l6 6 6-6"/>'
+  };
+  function icon(name) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + I[name] + '</svg>';
+  }
+
+  var PRESETS = [
+    { key: 'clear',    label: 'Clear',    value: 0 },
+    { key: 'drizzle',  label: 'Drizzle',  value: 0.2 },
+    { key: 'rain',     label: 'Rain',     value: 0.5 },
+    { key: 'storm',    label: 'Storm',    value: 0.8 },
+    { key: 'downpour', label: 'Downpour', value: 1 }
+  ];
+  var ICON_OF = { clear: 'sun', drizzle: 'drizzle', rain: 'rain', storm: 'storm', downpour: 'downpour' };
+
+  var presetHtml = PRESETS.map(function (p) {
+    return '<button class="bngw-preset" ng-class="{active: activePreset() == \'' + p.key + '\'}" ng-click="preset(' + p.value + ')">' +
+      icon(ICON_OF[p.key]) + '<span>' + p.label + '</span></button>';
+  }).join('');
+
+  var TEMPLATE = [
+    '<div class="bngw" ng-class="{compact: ui.compact}">',
+      '<div class="bngw-head">',
+        '<div class="ico">', icon('cloud'), '</div>',
+        '<div class="title">Rain Overhaul</div>',
+        '<div class="bngw-pill" ng-class="{on: d.rainOn, storm: d.rainOn && ui.target >= 0.8}">{{ weatherName() }}</div>',
+        '<button class="bngw-iconbtn" ng-click="toggleCompact()" title="Compact view">', '<span ng-if="!ui.compact">', icon('minus'), '</span><span ng-if="ui.compact">', icon('plus'), '</span></button>',
       '</div>',
-    replace: true,
-    restrict: 'EA',
-    link: function (scope, element) {
-      var lua = function (cmd) { bngApi.engineLua(cmd); };
 
-      scope.d = { rainOn: false, target: 0.6, intensity: 0, wetness: 0, wipers: 0, speed: 0, camera: '', inCar: false,
-                  features: { particles: true, sky: true, roads: true, body: true, grip: true, windshield: true, allCameras: false } };
-      scope.ui = { target: 0.6 };
-      scope.wiperNames = ['Off', 'Intermittent', 'Slow', 'Fast'];
-      scope.featureList = [
-        { key: 'particles', label: 'Rain' }, { key: 'sky', label: 'Storm sky' },
-        { key: 'roads', label: 'Wet roads' }, { key: 'body', label: 'Wet paint' },
-        { key: 'grip', label: 'Wet grip' }, { key: 'windshield', label: 'Windshield' },
-        { key: 'allCameras', label: 'Lens drops' }
-      ];
-      var dragging = false, dragTimer = null;
+      // Compact view: just the two meters
+      '<div ng-if="ui.compact">',
+        '<div class="bngw-mini"><span class="lbl">Rain</span><div class="bngw-track"><div ng-style="{width: pct(d.intensity)}"></div></div></div>',
+        '<div class="bngw-mini" style="padding-top:0"><span class="lbl">Road</span><div class="bngw-track"><div ng-style="{width: pct(d.wetness)}"></div></div></div>',
+      '</div>',
 
-      scope.toggleRain = function () { lua('beamngWeather_rain.toggleRain()'); };
-      scope.cycleWipers = function () { lua('beamngWeather_rain.cycleWipers()'); };
-      scope.setIntensity = function () {
-        dragging = true;
-        clearTimeout(dragTimer);
-        dragTimer = setTimeout(function () { dragging = false; }, 600);
-        lua('beamngWeather_rain.setIntensity(' + Number(scope.ui.target).toFixed(2) + ')');
-      };
-      scope.setFeature = function (key) {
-        lua('beamngWeather_rain.setFeature("' + key + '", ' + (scope.d.features[key] ? 'true' : 'false') + ')');
-      };
+      '<div class="bngw-body" ng-if="!ui.compact">',
+        '<div class="bngw-section">',
+          '<div class="bngw-label">Weather</div>',
+          '<div class="bngw-presets">', presetHtml, '</div>',
+        '</div>',
 
-      scope.$on('BeamNGWeatherUpdate', function (event, data) {
-        if (!data) return;
-        scope.$evalAsync(function () {
-          scope.d = data;
-          if (!dragging) scope.ui.target = data.target;
+        '<div class="bngw-section">',
+          '<div class="bngw-label">Intensity <span class="val">{{ (ui.target * 100) | number:0 }}%</span></div>',
+          '<input class="bngw-slider" type="range" min="0.05" max="1" step="0.01" ng-model="ui.target" ng-change="setIntensity()" ng-style="sliderStyle(ui.target, 0.05, 1)">',
+          '<div class="bngw-scale"><span>Drizzle</span><span>Rain</span><span>Downpour</span></div>',
+          '<button class="bngw-btn primary bngw-main" ng-class="{stop: d.rainOn}" ng-click="toggleRain()">{{ d.rainOn ? "Stop rain" : "Start rain" }}</button>',
+        '</div>',
+
+        '<div class="bngw-section bngw-meters">',
+          '<div class="bngw-meter"><div class="top"><span class="name">Rain now</span><span class="num">{{ (d.intensity * 100) | number:0 }}%</span></div>',
+            '<div class="bngw-track"><div ng-style="{width: pct(d.intensity)}"></div></div><div class="state">{{ rainState() }}</div></div>',
+          '<div class="bngw-meter"><div class="top"><span class="name">Road</span><span class="num">{{ (d.wetness * 100) | number:0 }}%</span></div>',
+            '<div class="bngw-track"><div ng-style="{width: pct(d.wetness)}"></div></div><div class="state">{{ roadState() }}</div></div>',
+        '</div>',
+
+        '<div class="bngw-section">',
+          '<div class="bngw-label">Wipers</div>',
+          '<div class="bngw-seg"><button ng-repeat="w in wiperNames track by $index" ng-class="{active: d.wipers == $index}" ng-click="setWipers($index)">{{ w }}</button></div>',
+        '</div>',
+
+        '<div class="bngw-section">',
+          '<div class="bngw-label">Effects</div>',
+          '<div class="bngw-toggles">',
+            '<div class="bngw-toggle" ng-repeat="f in featureList" ng-click="toggleFeature(f.key)" title="{{ f.tip }}"><span>{{ f.label }}</span><div class="bngw-switch" ng-class="{on: d.features[f.key]}"></div></div>',
+          '</div>',
+        '</div>',
+
+        '<button class="bngw-adv-toggle" ng-click="ui.advanced = !ui.advanced; saveUi()"><span>Advanced</span>',
+          '<span ng-style="{transform: ui.advanced ? \'rotate(180deg)\' : \'none\'}" style="width:16px;height:16px;display:inline-block">', icon('chev'), '</span></button>',
+        '<div ng-if="ui.advanced">',
+          '<div class="bngw-section">',
+            '<div class="bngw-label">Time to soak <span class="val">{{ ui.wetSeconds }} s</span></div>',
+            '<input class="bngw-slider" type="range" min="10" max="180" step="5" ng-model="ui.wetSeconds" ng-change="setRates()" ng-style="sliderStyle(ui.wetSeconds, 10, 180)">',
+          '</div>',
+          '<div class="bngw-section">',
+            '<div class="bngw-label">Time to dry <span class="val">{{ dryLabel() }}</span></div>',
+            '<input class="bngw-slider" type="range" min="30" max="900" step="15" ng-model="ui.drySeconds" ng-change="setRates()" ng-style="sliderStyle(ui.drySeconds, 30, 900)">',
+          '</div>',
+          '<div class="bngw-section bngw-btns">',
+            '<button class="bngw-btn" ng-click="setWetness(0)">Dry roads</button>',
+            '<button class="bngw-btn" ng-click="setWetness(1)">Soak roads</button>',
+            '<button class="bngw-btn" ng-click="resetSettings()">Reset all</button>',
+          '</div>',
+          '<div class="bngw-hint">Windshield drops show in the driver camera. Turn on Lens drops to see them in outside cameras too. Wet grip is experimental and may cause a short pause when it changes.</div>',
+        '</div>',
+      '</div>',
+    '</div>'
+  ].join('');
+
+  angular.module('beamng.apps')
+  .directive('beamngWeatherRain', [function () {
+    return {
+      template: TEMPLATE,
+      replace: true,
+      restrict: 'EA',
+      link: function (scope, element) {
+        var lua = function (cmd) { bngApi.engineLua(cmd); };
+
+        scope.d = { rainOn: false, target: 0.6, intensity: 0, wetness: 0, wipers: 0, speed: 0, camera: '', inCar: false,
+                    wetSeconds: 45, drySeconds: 240,
+                    features: { particles: true, sky: true, roads: true, body: true, grip: true, windshield: true, allCameras: false } };
+
+        // Panel view state, remembered between sessions
+        var saved = {};
+        try { saved = JSON.parse(localStorage.getItem('bngwRainUi') || '{}') || {}; } catch (e) { saved = {}; }
+        scope.ui = { target: 0.6, wetSeconds: 45, drySeconds: 240, compact: !!saved.compact, advanced: !!saved.advanced };
+        scope.saveUi = function () {
+          try { localStorage.setItem('bngwRainUi', JSON.stringify({ compact: scope.ui.compact, advanced: scope.ui.advanced })); } catch (e) {}
+        };
+        scope.toggleCompact = function () { scope.ui.compact = !scope.ui.compact; scope.saveUi(); };
+
+        scope.wiperNames = ['Off', 'Interval', 'Slow', 'Fast'];
+        scope.featureList = [
+          { key: 'particles',  label: 'Rain',       tip: 'Falling rain' },
+          { key: 'sky',        label: 'Storm sky',  tip: 'Clouds, fog and wind follow the rain' },
+          { key: 'roads',      label: 'Wet roads',  tip: 'Glossy, reflective roads' },
+          { key: 'body',       label: 'Wet paint',  tip: 'Soaked, glossy car paint' },
+          { key: 'windshield', label: 'Windshield', tip: 'Drops and wipers in the driver camera' },
+          { key: 'allCameras', label: 'Lens drops', tip: 'Drops on the camera in outside views' },
+          { key: 'grip',       label: 'Wet grip',   tip: 'Less grip on wet roads (experimental)' }
+        ];
+
+        scope.pct = function (v) { return Math.round((v || 0) * 100) + '%'; };
+        scope.sliderStyle = function (v, min, max) {
+          var p = ((v - min) / (max - min)) * 100;
+          return { background: 'linear-gradient(90deg, #5fb0ff ' + p + '%, #3a424d ' + p + '%)' };
+        };
+        scope.weatherName = function () {
+          if (!scope.d.rainOn) return scope.d.intensity > 0.01 ? 'Clearing' : 'Dry';
+          var t = scope.ui.target;
+          if (t < 0.3) return 'Drizzle';
+          if (t < 0.65) return 'Rain';
+          if (t < 0.9) return 'Storm';
+          return 'Downpour';
+        };
+        scope.activePreset = function () {
+          if (!scope.d.rainOn) return 'clear';
+          var best = null, dist = 1;
+          PRESETS.forEach(function (p) {
+            if (p.value > 0 && Math.abs(p.value - scope.ui.target) < dist) { dist = Math.abs(p.value - scope.ui.target); best = p.key; }
+          });
+          return dist <= 0.05 ? best : null;
+        };
+        scope.rainState = function () {
+          var i = scope.d.intensity || 0;
+          if (i < 0.01) return 'No rain';
+          if (scope.d.rainOn && i < scope.ui.target - 0.02) return 'Building up';
+          if (!scope.d.rainOn) return 'Easing off';
+          return 'Steady';
+        };
+        scope.roadState = function () {
+          var w = scope.d.wetness || 0;
+          if (w < 0.05) return 'Dry';
+          if (w < 0.33) return 'Damp';
+          if (w < 0.7) return 'Wet';
+          return 'Soaked';
+        };
+        scope.dryLabel = function () {
+          var s = scope.ui.drySeconds;
+          return s < 60 ? s + ' s' : (Math.floor(s / 60) + ' min' + (s % 60 ? ' ' + (s % 60) + ' s' : ''));
+        };
+
+        // Do not let live updates move a slider while it is being dragged
+        var holdUntil = 0;
+        function hold() { holdUntil = Date.now() + 700; }
+
+        scope.toggleRain = function () { lua('beamngWeather_rain.toggleRain()'); };
+        scope.preset = function (v) {
+          hold();
+          if (v > 0) scope.ui.target = v;
+          lua('beamngWeather_rain.setIntensity(' + Number(v).toFixed(2) + ')');
+        };
+        scope.setIntensity = function () {
+          hold();
+          lua('beamngWeather_rain.setIntensity(' + Number(scope.ui.target).toFixed(2) + ')');
+        };
+        scope.setWipers = function (i) { scope.d.wipers = i; lua('beamngWeather_rain.setWipers(' + i + ')'); };
+        scope.toggleFeature = function (key) {
+          var on = !scope.d.features[key];
+          scope.d.features[key] = on;
+          lua('beamngWeather_rain.setFeature("' + key + '", ' + (on ? 'true' : 'false') + ')');
+        };
+        scope.setRates = function () {
+          hold();
+          lua('beamngWeather_rain.setRates(' + Number(scope.ui.wetSeconds) + ', ' + Number(scope.ui.drySeconds) + ')');
+        };
+        scope.setWetness = function (v) { lua('beamngWeather_rain.setWetness(' + v + ')'); };
+        scope.resetSettings = function () { lua('beamngWeather_rain.resetSettings()'); };
+
+        scope.$on('BeamNGWeatherUpdate', function (event, data) {
+          if (!data) return;
+          scope.$evalAsync(function () {
+            scope.d = data;
+            if (Date.now() > holdUntil) {
+              scope.ui.target = data.target;
+              if (data.wetSeconds) scope.ui.wetSeconds = data.wetSeconds;
+              if (data.drySeconds) scope.ui.drySeconds = data.drySeconds;
+            }
+          });
         });
-      });
 
       // ---------------------------------------------------------------
       // Windshield overlay
@@ -249,3 +407,4 @@ angular.module('beamng.apps')
     }
   };
 }]);
+})();

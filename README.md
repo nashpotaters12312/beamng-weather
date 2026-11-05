@@ -22,7 +22,16 @@ A BeamNG.drive mod that adds a full rain system:
 
 ## Controls
 
-- **App panel:** rain on/off, intensity, live rain and road-wetness bars, wipers, and on/off switches for each feature.
+![Rain Overhaul panel](docs/ui-preview.png)
+
+- **App panel (Rain Overhaul):**
+  - **Weather presets:** Clear, Drizzle, Rain, Storm, Downpour.
+  - **Intensity slider** and a **Start / Stop rain** button.
+  - **Live meters:** how hard it's raining now (building up, steady, easing off) and how wet the road is (dry, damp, wet, soaked).
+  - **Wipers:** Off, Interval, Slow, Fast.
+  - **Effects:** a switch for each part (rain, storm sky, wet roads, wet paint, windshield, lens drops, wet grip).
+  - **Advanced:** how long roads take to soak and to dry, buttons to dry or soak the roads instantly, and a reset.
+  - The **–** button in the header shrinks the panel to two small meters. Press **+** to open it again.
 - **Key bindings:** *Options → Controls → Bindings → Gameplay* lists four actions: *Rain Overhaul: Toggle rain / Heavier rain / Lighter rain / Cycle wipers*. They have no keys by default, so set your own.
 - **Console** (`~`):
   ```lua
