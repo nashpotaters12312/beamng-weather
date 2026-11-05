@@ -127,6 +127,11 @@ function M.onExtensionUnloaded()
   cache = nil
 end
 
+function M.getStatus()
+  if not cache then return "waiting for rain" end
+  return string.format("%d road materials", #cache)
+end
+
 -- Console helper: list what the mod treats as road
 function M.dump()
   if not cache then scan() end

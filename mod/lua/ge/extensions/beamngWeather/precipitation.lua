@@ -32,6 +32,7 @@ local skyOrig = nil
 local lastIntensity = -1
 local lastSky = -1
 local status = "not started"
+local builtInSplashes = true -- turned off when the particle splashes work
 
 local function findObj(name)
   local ok, o = pcall(scenetree.findObject, name)
@@ -99,9 +100,9 @@ local function createLayer(i, layer)
     p:setField("boxWidth", 0, tostring(layer.boxWidth))
     p:setField("boxHeight", 0, tostring(layer.boxHeight))
     p:setField("dropSize", 0, tostring(layer.dropSize))
-    p:setField("splashSize", 0, tostring(layer.splashSize))
+    p:setField("splashSize", 0, tostring(builtInSplashes and layer.splashSize or 0))
     p:setField("splashMS", 0, "220")
-    p:setField("animateSplashes", 0, layer.splashSize > 0 and "1" or "0")
+    p:setField("animateSplashes", 0, (builtInSplashes and layer.splashSize > 0) and "1" or "0")
     p:setField("dropAnimateMS", 0, "0")
     p:setField("fadeDist", 0, tostring(layer.boxWidth * 0.35))
     p:setField("fadeDistEnd", 0, tostring(layer.boxWidth * 0.5))
@@ -209,6 +210,17 @@ function M.apply(intensity, particlesOn, skyOn, force)
   if force or math.abs(sI - lastSky) > 0.02 then
     applySky(sI)
     lastSky = sI
+  end
+end
+
+-- The game's own flat splash pictures: on or off
+function M.setBuiltInSplashes(on)
+  builtInSplashes = on and true or false
+  for i, p in pairs(objs) do
+    local size = builtInSplashes and LAYERS[i].splashSize or 0
+    setF(p, "splashSize", size)
+    setF(p, "animateSplashes", size > 0 and 1 or 0)
+    commit(p)
   end
 end
 

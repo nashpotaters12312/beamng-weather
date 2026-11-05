@@ -17,15 +17,24 @@ local TEX = {
   paint = "/art/beamng_weather/droplets_body_n.png",
   glass = "/art/beamng_weather/droplets_glass_n.png",
 }
+-- Colour detail: neutral grey with brighter beads, so drops show even
+-- where the normal detail slot isn't used
+local COLOR_TEX = {
+  paint = "/art/beamng_weather/droplets_body_d.png",
+  glass = "/art/beamng_weather/droplets_glass_d.png",
+}
 local SCALE = { paint = 9, glass = 5 }        -- tiles per UV unit (bigger = smaller drops)
 local MAX_STRENGTH = { paint = 1.0, glass = 1.4 }
 
 local MAP_FIELDS      = {"detailNormalMap", "normalDetailMap"}
+local COLOR_FIELDS    = {"detailMap", "baseColorDetailMap"}
 local STRENGTH_FIELDS = {"detailNormalMapStrength", "normalDetailMapStrength"}
 local SCALE_FIELDS    = {"detailScale"}
 
 local GLASS_WORDS = {"glass", "windshield", "windscreen", "window"}
-local GLASS_SKIP  = {"mirror", "light", "lamp", "gauge", "screen_", "display", "lens"}
+local GLASS_SKIP  = {"mirror", "light", "lamp", "gauge", "display", "lens", "headl", "taill", "signal", "reflector"}
+-- Car paint flag: "instanceDiffuse" in old materials, "instanceBaseColor" in newer ones
+local PAINT_FLAGS = {"instanceBaseColor", "instanceDiffuse"}
 
 local STAGES = {0, 0.35, 0.65, 1.0}    -- few steps: every change reloads the materials
 
@@ -59,21 +68,46 @@ local function fileOf(obj)
   return nil
 end
 
+-- Model names of the cars in the world (e.g. "pickup", "etk800"), to spot
+-- their materials by name when the material's file is not known
+local function vehicleModels()
+  local models = {}
+  if not be or not be.getObjectCount then return models end
+  for i = 0, be:getObjectCount() - 1 do
+    local veh = be:getObject(i)
+    if veh then
+      local ok, jb = pcall(function() return veh:getJBeamFilename() end)
+      if ok and type(jb) == "string" and jb ~= "" then models[lower(jb)] = true end
+    end
+  end
+  return models
+end
+
+local function isPaintLayer(obj, i)
+  for _, f in ipairs(PAINT_FLAGS) do
+    if truthy(getF(obj, f, i)) then return true end
+  end
+  return false
+end
+
 -- What kind of vehicle material is this, and which layers to change?
-local function classify(obj, name)
+local function classify(obj, name, models)
   local file = fileOf(obj)
-  local isVehicleFile = file and string.find(file, "/vehicles/", 1, true) ~= nil
-  -- Paint: any layer with instance (car paint) colour
+  local lname = lower(name) .. " " .. lower(getF(obj, "mapTo", 0))
+  local isVehicle = file and string.find(file, "/vehicles/", 1, true) ~= nil
+  if not isVehicle and not file then
+    for m in pairs(models) do
+      if string.find(lname, m, 1, true) then isVehicle = true; break end
+    end
+  end
+  -- Paint: any layer with car paint colour (only cars have that)
   local paintLayers = {}
   for i = 0, 3 do
-    if truthy(getF(obj, "instanceDiffuse", i)) then paintLayers[#paintLayers + 1] = i end
+    if isPaintLayer(obj, i) then paintLayers[#paintLayers + 1] = i end
   end
-  if #paintLayers > 0 and (isVehicleFile or file == nil) then return "paint", paintLayers end
-  -- Glass: only when we know it's a vehicle file (map buildings have windows too)
-  if isVehicleFile then
-    local s = lower(name) .. " " .. lower(getF(obj, "mapTo", 0))
-    if hasAny(s, GLASS_WORDS) and not hasAny(s, GLASS_SKIP) then return "glass", {0} end
-  end
+  if #paintLayers > 0 and (isVehicle or file == nil) then return "paint", paintLayers end
+  -- Glass: only on cars (map buildings have windows too)
+  if isVehicle and hasAny(lname, GLASS_WORDS) and not hasAny(lname, GLASS_SKIP) then return "glass", {0} end
   return nil
 end
 
@@ -81,7 +115,7 @@ local function remember(entry)
   entry.orig = {}
   for _, i in ipairs(entry.layers) do
     local o = {}
-    for _, list in ipairs({MAP_FIELDS, STRENGTH_FIELDS, SCALE_FIELDS}) do
+    for _, list in ipairs({MAP_FIELDS, COLOR_FIELDS, STRENGTH_FIELDS, SCALE_FIELDS}) do
       for _, f in ipairs(list) do o[f] = getF(entry.obj, f, i) or "" end
     end
     entry.orig[i] = o
@@ -93,11 +127,12 @@ local function scan()
   local ok, names = pcall(scenetree.findClassObjects, "Material")
   if not ok or type(names) ~= "table" then return end
   local added = 0
+  local models = vehicleModels()
   for _, name in ipairs(names) do
     if not cache[name] then
       local obj = scenetree.findObject(name)
       if obj then
-        local kind, layers = classify(obj, name)
+        local kind, layers = classify(obj, name, models)
         if kind then
           local e = {obj = obj, kind = kind, layers = layers}
           remember(e)
@@ -122,6 +157,7 @@ local function applyEntry(e, wet)
       for f, v in pairs(e.orig[i]) do setF(e.obj, f, i, v) end
     else
       for _, f in ipairs(MAP_FIELDS) do setF(e.obj, f, i, TEX[e.kind]) end
+      for _, f in ipairs(COLOR_FIELDS) do setF(e.obj, f, i, COLOR_TEX[e.kind]) end
       for _, f in ipairs(STRENGTH_FIELDS) do setF(e.obj, f, i, string.format("%.3f", MAX_STRENGTH[e.kind] * wet)) end
       local s = SCALE[e.kind]
       for _, f in ipairs(SCALE_FIELDS) do setF(e.obj, f, i, s .. " " .. s) end
@@ -162,6 +198,15 @@ function M.onClientEndMission() cache = nil; currentStage = 1; dirty = false end
 function M.onExtensionUnloaded()
   if cache then for _, e in pairs(cache) do applyEntry(e, 0) end end
   cache = nil
+end
+
+function M.getStatus()
+  if not cache then return "waiting for rain" end
+  local paint, glass = 0, 0
+  for _, e in pairs(cache) do
+    if e.kind == "paint" then paint = paint + 1 else glass = glass + 1 end
+  end
+  return string.format("%d paint, %d glass materials", paint, glass)
 end
 
 -- Console helper: list the materials that get drops

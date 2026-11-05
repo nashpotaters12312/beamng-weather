@@ -19,6 +19,7 @@ M.dependencies = {
   "beamngWeather_wetRoads",
   "beamngWeather_wetBody",
   "beamngWeather_wetDroplets",
+  "beamngWeather_splashes",
   "beamngWeather_wetGrip",
 }
 
@@ -42,6 +43,7 @@ local defaults = {
     roads      = true,  -- wet roads
     body       = true,  -- wet car paint
     droplets   = true,  -- water drops on car paint and windows
+    splashes   = true,  -- 3D particle splashes on the ground
     grip       = false, -- less grip on wet roads (experimental, off by default)
     windshield = true,  -- drops on the windshield (UI overlay)
     allCameras = false, -- drops on the "lens" in outside cameras too
@@ -139,6 +141,31 @@ local function playerSpeed()
   return speed, veh
 end
 
+local function isPaused()
+  for _, get in ipairs({
+    function() return simTimeAuthority and simTimeAuthority.getPause and simTimeAuthority.getPause() end,
+    function() return bullettime and bullettime.getPause and bullettime.getPause() end,
+  }) do
+    local ok, v = pcall(get)
+    if ok and v ~= nil then return v and true or false end
+  end
+  return false
+end
+
+-- Short report for the panel's diagnostics line
+local function diagnostics()
+  local d = {}
+  if beamngWeather_precipitation and beamngWeather_precipitation.getDebugInfo then
+    local ok, info = pcall(beamngWeather_precipitation.getDebugInfo)
+    if ok and info then d.rain = info.status end
+  end
+  if beamngWeather_splashes and beamngWeather_splashes.getStatus then d.splashes = beamngWeather_splashes.getStatus() end
+  if beamngWeather_wetDroplets and beamngWeather_wetDroplets.getStatus then d.carDrops = beamngWeather_wetDroplets.getStatus() end
+  if beamngWeather_wetRoads and beamngWeather_wetRoads.getStatus then d.roads = beamngWeather_wetRoads.getStatus() end
+  d.mapLoaded = levelReady
+  return d
+end
+
 local function sendUI()
   if not guihooks then return end
   local speed = playerSpeed()
@@ -156,6 +183,8 @@ local function sendUI()
     features   = settings.features,
     wetSeconds = math.floor(1 / settings.wetRate + 0.5),
     drySeconds = math.floor(1 / settings.dryRate + 0.5),
+    paused     = isPaused(),
+    diag       = diagnostics(),
   })
 end
 
@@ -170,6 +199,9 @@ local function pushToModules(force)
   end
   if beamngWeather_wetBody then
     beamngWeather_wetBody.apply(f.body and state.wetness or 0, force)
+  end
+  if beamngWeather_splashes then
+    beamngWeather_splashes.apply(f.particles and state.intensity or 0, f.splashes)
   end
   if beamngWeather_wetDroplets then
     beamngWeather_wetDroplets.apply(f.droplets and state.wetness or 0, force)
@@ -246,6 +278,9 @@ function M.setQuality(q)
   if beamngWeather_precipitation and beamngWeather_precipitation.setQuality then
     beamngWeather_precipitation.setQuality(q)
   end
+  if beamngWeather_splashes and beamngWeather_splashes.setQuality then
+    beamngWeather_splashes.setQuality(q)
+  end
   saveSettingsSoon()
   sendUI()
 end
@@ -286,6 +321,7 @@ function M.debug()
   if beamngWeather_precipitation and beamngWeather_precipitation.getDebugInfo then
     for k, v in pairs(beamngWeather_precipitation.getDebugInfo()) do add("rain." .. k, v) end
   end
+  for k, v in pairs(diagnostics()) do add("status." .. k, v) end
   local text = "BeamNG Weather debug:\n" .. table.concat(lines, "\n")
   print(text)
   log("I", logTag, text)
@@ -349,6 +385,9 @@ function M.onExtensionLoaded()
   state.intensity, state.wetness = 0, 0
   if beamngWeather_precipitation and beamngWeather_precipitation.setQuality then
     beamngWeather_precipitation.setQuality(settings.quality)
+  end
+  if beamngWeather_splashes and beamngWeather_splashes.setQuality then
+    beamngWeather_splashes.setQuality(settings.quality)
   end
   -- The mod can be turned on while a map is already loaded
   levelReady = levelIsLoaded()

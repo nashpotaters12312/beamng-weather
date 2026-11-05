@@ -3,6 +3,7 @@
 A BeamNG.drive mod that adds a full rain system:
 
 - **Rain particles.** Two layers of rain follow the camera: thin, dense streaks close to you, plus a farther layer for depth. They use the mod's own high-resolution textures, and there are four quality levels (Low, Medium, High, Ultra).
+- **3D splashes.** Instead of the game's flat splash pictures, raindrops hitting the ground throw up tiny water droplets and leave rings that spread flat on the road, all around the camera.
 - **Storm sky.** Clouds, fog and wind build up with the rain and go back to the map's sky afterwards.
 - **Wet roads.** Asphalt, concrete, road lines, kerbs and similar materials get smoother and gain a glossy water layer (clear coat), so they reflect lights, sky and cars. Wetness builds up over time in rain and dries slowly after it stops. Light rain only makes roads damp.
 - **Water drops on cars.** Beads of water on the paint, and bigger drops with short runs on the windows. They show from every camera and fade away as things dry.
@@ -64,6 +65,7 @@ mod/
     wetRoads.lua        wet road materials
     wetBody.lua         wet vehicle paint (gloss)
     wetDroplets.lua     water drops on vehicle paint and glass
+    splashes.lua        3D particle splashes and ripples on the ground
     wetGrip.lua         wet ground-model friction (experimental)
   lua/ge/extensions/core/input/actions/beamngWeather.json   key binding actions
   ui/modules/apps/BeamNGWeatherRain/                         control panel + windshield overlay
@@ -72,6 +74,8 @@ tools/
   build.sh              builds dist/beamng_weather.zip
   make_textures.py      regenerates the textures (needs Pillow)
 ```
+
+**Advanced → Diagnostics** in the panel shows what the mod found: rain layers, splash emitters, car paint and glass materials, road materials, and the camera. If something doesn't show in game, send a screenshot of this section.
 
 ## Known limits and things to test
 
