@@ -42,6 +42,7 @@ A BeamNG.drive mod that adds a full rain system:
   beamngWeather_rain.setFeature("grip", false)
   beamngWeather_rain.setRates(45, 240)       -- seconds to get fully wet / to dry
   beamngWeather_wetRoads.dump()              -- list the materials treated as road
+  beamngWeather_rain.debug()                 -- show what the rain system is doing (send this if rain doesn't show)
   ```
 
 Settings are saved to `settings/beamng_weather.json` in your user folder.

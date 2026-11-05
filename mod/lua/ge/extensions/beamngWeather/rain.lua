@@ -215,6 +215,30 @@ function M.getState()
   return {settings = deepcopy(settings), intensity = state.intensity, wetness = state.wetness}
 end
 
+-- Console: beamngWeather_rain.debug()  prints what the mod sees and does
+function M.debug()
+  local lines = {}
+  local function add(k, v)
+    if type(v) == "table" then v = table.concat((function() local t = {} for _, x in pairs(v) do t[#t + 1] = tostring(x) end return t end)(), ", ") end
+    lines[#lines + 1] = string.format("  %-20s %s", k, tostring(v))
+  end
+  add("rainOn", settings.rainOn)
+  add("target intensity", settings.intensity)
+  add("intensity now", string.format("%.2f", state.intensity))
+  add("wetness", string.format("%.2f", state.wetness))
+  add("camera", cameraName())
+  local f = {}
+  for k, v in pairs(settings.features) do f[#f + 1] = k .. "=" .. tostring(v) end
+  add("features", f)
+  if beamngWeather_precipitation and beamngWeather_precipitation.getDebugInfo then
+    for k, v in pairs(beamngWeather_precipitation.getDebugInfo()) do add("rain." .. k, v) end
+  end
+  local text = "BeamNG Weather debug:\n" .. table.concat(lines, "\n")
+  print(text)
+  log("I", logTag, text)
+  return text
+end
+
 -- Called by the UI app when it loads, so it gets data at once.
 function M.requestUIUpdate() sendUI() end
 

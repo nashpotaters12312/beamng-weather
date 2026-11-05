@@ -22,6 +22,9 @@ local origDrops = nil        -- the level's own drop count, put back when dry
 local skyOrig = nil          -- the level's clouds, fog and wind before the rain
 local lastIntensity = -1
 local lastSky = -1
+local lastDrops = nil        -- numDrops we last wrote
+local origFollowCam = nil    -- the level rain's followCam, put back when dry
+local status = "not started" -- shown by beamngWeather_rain.debug()
 
 local function findObj(name)
   local ok, o = pcall(scenetree.findObject, name)
@@ -80,6 +83,8 @@ local function setupRainObject()
     if o then
       rainObj = o
       origDrops = tonumber(getF(o, "numDrops")) or 0
+      origFollowCam = getF(o, "followCam")
+      status = "using the map's rain object '" .. tostring(name) .. "'"
       log("I", logTag, "Using level precipitation object: " .. tostring(name))
       return
     end
@@ -88,13 +93,14 @@ local function setupRainObject()
   -- 2) Make our own rain that follows the camera
   local db = pickDatablock()
   if not db then
+    status = "no rain datablock found in this map"
     log("W", logTag, "No rain datablock found, rain particles are off. Wet roads, body and windshield still work.")
     return
   end
   local ok, err = pcall(function()
     local p = createObject("Precipitation")
     p:setField("dataBlock", 0, db)
-    p:setField("numDrops", 0, "0")
+    p:setField("numDrops", 0, tostring(MAX_DROPS))
     p:setField("boxWidth", 0, "200")
     p:setField("boxHeight", 0, "100")
     p:setField("dropSize", 0, "0.5")
@@ -118,30 +124,68 @@ local function setupRainObject()
     p:setField("maxSpeed", 0, "2")
     p:setField("minMass", 0, "0.75")
     p:setField("maxMass", 0, "0.85")
+    p:setField("canSave", 0, "0")
     p:registerObject(OWN_NAME)
+    -- Put it in the level so it is part of the scene
+    pcall(function() scenetree.MissionGroup:addObject(p) end)
+    pcall(function() p:setPercentage(0) end)
     rainObj = p
   end)
   if ok and rainObj then
     createdOwn = true
     origDrops = 0
+    lastDrops = MAX_DROPS
+    status = "created rain object (datablock '" .. tostring(db) .. "')"
     log("I", logTag, "Created rain object with datablock " .. tostring(db))
   else
     rainObj = nil
+    status = "could not create rain object: " .. tostring(err)
     log("W", logTag, "Could not create rain object: " .. tostring(err))
   end
 end
 
-local function setDrops(n)
-  if rainObj then
-    setF(rainObj, "numDrops", math.floor(n))
-    return true
+-- Field changes made from Lua only reach the renderer after postApply().
+local function commit(obj)
+  pcall(function() obj:postApply() end)
+end
+
+local function setDropCount(n)
+  n = math.floor(n)
+  if n == lastDrops then return end
+  setF(rainObj, "numDrops", n)
+  commit(rainObj)
+  lastDrops = n
+end
+
+-- pI: rain intensity 0..1
+local function applyRain(pI)
+  -- Density: light rain is sparse, heavy rain is dense
+  local pct = (pI > 0) and math.min(1, 0.05 + pI ^ 1.3) or 0
+
+  if rainObj and createdOwn then
+    -- Our own object always holds MAX_DROPS; the storm percentage thins it out
+    pcall(function() rainObj:setPercentage(pct) end)
+    pcall(function() rainObj:setHidden(pI <= 0) end)
+  elseif rainObj then
+    -- The map's own rain object
+    if pI > 0 then
+      if getF(rainObj, "followCam") ~= "1" then setF(rainObj, "followCam", 1); commit(rainObj) end
+      pcall(function() rainObj:setHidden(false) end)
+      setDropCount(math.max(origDrops or 0, MAX_DROPS * pct))
+      pcall(function() rainObj:setPercentage(1) end)
+    else
+      if origFollowCam and getF(rainObj, "followCam") ~= origFollowCam then setF(rainObj, "followCam", origFollowCam) end
+      setDropCount(origDrops or 0)
+      commit(rainObj)
+    end
   end
-  -- Fallback: the game's own environment helper
-  if core_environment and core_environment.setPrecipitation then
+
+  -- The game's own rain helper, if this version has one (also works when we found no object)
+  if not createdOwn and core_environment and core_environment.setPrecipitation then
+    local n = (pI > 0) and math.max(origDrops or 0, MAX_DROPS * pct) or (origDrops or 0)
     pcall(core_environment.setPrecipitation, math.floor(n))
-    return true
+    if not rainObj and pI > 0 then status = "using the game's core_environment.setPrecipitation" end
   end
-  return false
 end
 
 -- Sky ------------------------------------------------------------------
@@ -184,12 +228,7 @@ function M.apply(intensity, particlesOn, skyOn, force)
   local pI = particlesOn and intensity or 0
   if force or math.abs(pI - lastIntensity) > 0.01 then
     if pI > 0 and not triedSetup then setupRainObject() end
-    if rainObj or pI > 0 or force then
-      -- Light rain is sparse, heavy rain is dense (curve weights the top end)
-      local drops = (pI > 0) and (MAX_DROPS * (pI ^ 1.5)) or (origDrops or 0)
-      if not createdOwn and origDrops and pI > 0 then drops = math.max(drops, origDrops) end
-      setDrops(drops)
-    end
+    if rainObj or pI > 0 or force then applyRain(pI) end
     lastIntensity = pI
   end
 
@@ -206,17 +245,35 @@ local function cleanup()
       pcall(function() rainObj:delete() end)
     elseif origDrops then
       setF(rainObj, "numDrops", math.floor(origDrops))
+      if origFollowCam then setF(rainObj, "followCam", origFollowCam) end
+      commit(rainObj)
     end
   end
   if skyOrig then applySky(0) end
   rainObj, createdOwn, triedSetup, origDrops, skyOrig = nil, false, false, nil, nil
-  lastIntensity, lastSky = -1, -1
+  lastIntensity, lastSky, lastDrops, origFollowCam = -1, -1, nil, nil
+  status = "not started"
+end
+
+function M.getDebugInfo()
+  local info = {status = status, createdOwn = createdOwn, lastIntensity = lastIntensity}
+  if rainObj then
+    info.object = (pcall(function() return rainObj:getName() end)) and rainObj:getName() or "?"
+    info.dataBlock = getF(rainObj, "dataBlock")
+    info.numDrops = getF(rainObj, "numDrops")
+    info.followCam = getF(rainObj, "followCam")
+  end
+  info.levelRainObjects = classObjects("Precipitation")
+  info.datablocks = classObjects("PrecipitationData")
+  info.hasSetPrecipitation = (core_environment and core_environment.setPrecipitation) and true or false
+  return info
 end
 
 function M.onClientEndMission()
   -- The level is going away: forget our objects, they are deleted with it
   rainObj, createdOwn, triedSetup, origDrops, skyOrig = nil, false, false, nil, nil
-  lastIntensity, lastSky = -1, -1
+  lastIntensity, lastSky, lastDrops, origFollowCam = -1, -1, nil, nil
+  status = "not started"
 end
 
 function M.onExtensionUnloaded() cleanup() end
