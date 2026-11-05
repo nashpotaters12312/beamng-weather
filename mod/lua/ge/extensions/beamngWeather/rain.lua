@@ -25,7 +25,10 @@ local logTag = "beamngWeather"
 local settingsPath = "settings/beamng_weather.json"
 
 -- Default settings, saved to the user folder
+local SETTINGS_VERSION = 2
+
 local defaults = {
+  version        = SETTINGS_VERSION,
   intensity      = 0.6,   -- target rain intensity 0..1 used when rain is on
   rainOn         = false,
   wetRate        = 1/45,  -- wetness gained per second at full intensity (fully wet in ~45 s)
@@ -36,7 +39,7 @@ local defaults = {
     sky        = true,  -- clouds, fog and wind follow the rain
     roads      = true,  -- wet roads
     body       = true,  -- wet car paint
-    grip       = true,  -- less grip on wet roads
+    grip       = false, -- less grip on wet roads (experimental, off by default)
     windshield = true,  -- drops on the windshield (UI overlay)
     allCameras = false, -- drops on the "lens" in outside cameras too
   },
@@ -53,6 +56,13 @@ local state = {
 local uiTimer = 0
 local applyTimer = 0
 local saveTimer = nil
+
+-- Nothing in the world is touched until a map is loaded and has settled.
+-- Creating rain objects or changing ground models at the main menu can
+-- crash the game.
+local levelReady = false
+local readyDelay = 0
+local READY_DELAY = 3 -- seconds after the map loads
 
 -- Helpers ---------------------------------------------------------------
 
@@ -74,7 +84,22 @@ end
 
 local function loadSettings()
   local ok, data = pcall(jsonReadFile, settingsPath)
-  if ok and type(data) == "table" then mergeSettings(settings, data) end
+  if ok and type(data) == "table" then
+    -- Older settings files had wet grip on by default: drop that choice
+    if data.version ~= SETTINGS_VERSION and type(data.features) == "table" then
+      data.features.grip = nil
+    end
+    data.version = nil
+    mergeSettings(settings, data)
+  end
+  settings.version = SETTINGS_VERSION
+  -- Every game session starts dry; rain only starts when you ask for it
+  settings.rainOn = false
+end
+
+local function levelIsLoaded()
+  local ok, mg = pcall(function() return scenetree and scenetree.MissionGroup end)
+  return ok and mg ~= nil
 end
 
 local function saveSettingsSoon() saveTimer = 1.0 end
@@ -121,6 +146,7 @@ local function sendUI()
 end
 
 local function pushToModules(force)
+  if not levelReady or readyDelay > 0 then return end
   local f = settings.features
   if beamngWeather_precipitation then
     beamngWeather_precipitation.apply(state.intensity, f.particles, f.sky, force)
@@ -267,10 +293,16 @@ function M.onUpdate(dtReal, dtSim, dtRaw)
     state.wetness = math.max(0, state.wetness - settings.dryRate * dt)
   end
 
+  if readyDelay > 0 then
+    readyDelay = readyDelay - dt
+    if readyDelay <= 0 then readyDelay = 0; pushToModules(true) end
+  end
+
   applyTimer = applyTimer + dt
   if applyTimer >= 0.25 then
     applyTimer = 0
-    pushToModules(false)
+    local ok, err = pcall(pushToModules, false)
+    if not ok then log("E", logTag, "Update failed: " .. tostring(err)) end
   end
 
   uiTimer = uiTimer + dt
@@ -287,25 +319,29 @@ end
 
 function M.onExtensionLoaded()
   loadSettings()
-  -- Start at a wetness that matches the saved rain state.
-  state.intensity = targetIntensity()
-  state.wetness = settings.rainOn and clamp(0.35 + state.intensity, 0, 1) or 0
-  log("I", logTag, "Rain Overhaul loaded")
+  state.intensity, state.wetness = 0, 0
+  -- The mod can be turned on while a map is already loaded
+  levelReady = levelIsLoaded()
+  readyDelay = levelReady and READY_DELAY or 0
+  log("I", logTag, "Rain Overhaul loaded" .. (levelReady and " (map already loaded)" or ""))
 end
 
 function M.onExtensionUnloaded()
   -- Put the world back to dry
   state.wetness, state.intensity = 0, 0
-  pushToModules(true)
+  if levelReady then pushToModules(true) end
   if saveTimer then saveSettings() end
 end
 
 function M.onClientPostStartMission()
-  -- A new level was loaded: the sub-modules rescan their objects
-  pushToModules(true)
+  -- A map finished loading: wait a moment, then the sub-modules rescan it
+  levelReady = true
+  readyDelay = READY_DELAY
 end
 
 function M.onClientEndMission()
+  levelReady = false
+  readyDelay = 0
   if saveTimer then saveTimer = nil; saveSettings() end
 end
 

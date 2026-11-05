@@ -74,6 +74,9 @@ local function pickDatablock()
 end
 
 local function setupRainObject()
+  -- Never create anything when no map is loaded
+  local ok, mg = pcall(function() return scenetree.MissionGroup end)
+  if not ok or not mg then return end
   triedSetup = true
 
   -- 1) The level already has rain

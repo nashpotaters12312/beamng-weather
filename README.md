@@ -8,7 +8,7 @@ A BeamNG.drive mod that adds a full rain system:
 - **Wet car body.** All cars' paint gets a strong, smooth clear coat, so the bodywork looks soaked. The original paint comes back when it dries. If you repaint a car in the rain, your new paint is kept.
 - **Rain on the windshield.** In the driver camera, drops land on the glass. Big drops run down when you're slow. Above about 45 km/h the airflow pushes them up the glass, and they leave small beads behind.
 - **Wipers.** Off, intermittent, slow and fast. They clear the drops they sweep over.
-- **Wet grip (experimental).** Paved surfaces lose grip in 4 steps (dry, damp, wet, soaked). The mod uses the game's own `ASPHALT_WET` values when it can find them.
+- **Wet grip (experimental, off by default).** Paved surfaces lose grip in 4 steps (dry, damp, wet, soaked). The mod uses the game's own `ASPHALT_WET` values when it can find them.
 
 ## Install
 
@@ -45,7 +45,9 @@ A BeamNG.drive mod that adds a full rain system:
   beamngWeather_rain.debug()                 -- show what the rain system is doing (send this if rain doesn't show)
   ```
 
-Settings are saved to `settings/beamng_weather.json` in your user folder.
+Settings are saved to `settings/beamng_weather.json` in your user folder. Every game session starts dry. The mod changes nothing in the world until a map has been loaded for a few seconds.
+
+**If the game won't start:** remove `beamng_weather.zip` from `mods` or delete `settings/beamng_weather.json`, then send `beamng.log` from your user folder.
 
 ## Mod layout
 
