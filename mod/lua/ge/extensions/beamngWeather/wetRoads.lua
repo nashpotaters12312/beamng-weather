@@ -33,7 +33,7 @@ local WET_CLEARCOAT_ROUGH  = 0.04  -- very smooth = sharp reflections
 
 local cache = nil        -- list of {obj=, name=, layers={[i]={rough=,cc=,ccr=}}}
 local lastWet = -1
-local STEP = 0.04        -- only re-apply when wetness moves this much (reload is not free)
+local STEP = 0.25        -- only 4 steps: every step reloads the road materials (not free)
 
 local function lower(s) return string.lower(tostring(s or "")) end
 

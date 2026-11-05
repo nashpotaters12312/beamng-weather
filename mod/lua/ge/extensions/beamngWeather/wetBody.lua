@@ -18,7 +18,7 @@ local WET_CC_ROUGH    = 0.02
 
 local tracked = {}   -- [vehId] = {orig = {12 numbers}, written = "string"}
 local lastWet = -1
-local STEP = 0.02
+local STEP = 0.1
 local warned = false
 
 local function parse(s)

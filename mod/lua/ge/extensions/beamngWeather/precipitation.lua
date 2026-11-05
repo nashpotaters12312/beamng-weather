@@ -17,12 +17,12 @@ local FALLBACK_DATABLOCKS = {"rain_medium", "rain_heavy", "rain_drop", "rain", "
 
 -- Rain layers. Drops are per layer at 100% intensity on "high" quality.
 local LAYERS = {
-  { name = "beamngWeather_rainNear", drops = 7000, boxWidth = 36,  boxHeight = 24,
+  { name = "beamngWeather_rainNear", drops = 3500, boxWidth = 36,  boxHeight = 24,
     dropSize = 0.22, splashSize = 0.25, minSpeed = 3.5, maxSpeed = 4.5 },
-  { name = "beamngWeather_rainFar",  drops = 9000, boxWidth = 140, boxHeight = 70,
+  { name = "beamngWeather_rainFar",  drops = 4000, boxWidth = 140, boxHeight = 70,
     dropSize = 0.45, splashSize = 0.0,  minSpeed = 3.0, maxSpeed = 4.0 },
 }
-local QUALITY = { low = 0.35, medium = 0.65, high = 1.0, ultra = 1.6 }
+local QUALITY = { low = 0.3, medium = 0.6, high = 1.0, ultra = 1.6 }
 
 local objs = {}              -- created Precipitation objects, by layer index
 local triedSetup = false
@@ -111,7 +111,7 @@ local function createLayer(i, layer)
     p:setField("glowIntensity", 0, "0 0 0 0")
     p:setField("reflect", 0, "0")
     p:setField("rotateWithCamVel", 0, "1")
-    p:setField("doCollision", 0, "1")
+    p:setField("doCollision", 0, "0") -- per-drop ray casts are very expensive
     p:setField("hitPlayers", 0, "0")
     p:setField("hitVehicles", 0, "0")
     p:setField("followCam", 0, "1")
@@ -248,7 +248,7 @@ function M.useMapLook(on)
   return status
 end
 
-function M.getDebugInfo()
+function M.getDebugInfo(full)
   local info = { status = status, quality = quality, lastIntensity = lastIntensity, dataBlock = dataBlockName }
   local n = 0
   for i, p in pairs(objs) do
@@ -256,8 +256,10 @@ function M.getDebugInfo()
     info["layer" .. i .. ".numDrops"] = getF(p, "numDrops")
   end
   info.layers = n
-  info.mapRainObjects = classObjects("Precipitation")
-  info.datablocks = classObjects("PrecipitationData")
+  if full then
+    info.mapRainObjects = classObjects("Precipitation")
+    info.datablocks = classObjects("PrecipitationData")
+  end
   return info
 end
 

@@ -20,7 +20,11 @@ local NAMES = {
 }
 
 -- Emitter pairs (crown + ripple) per quality level
-local POOL = { low = 8, medium = 16, high = 28, ultra = 44 }
+local POOL = { low = 4, medium = 8, high = 12, ultra = 20 }
+-- Each frame only some emitters jump to a new spot (round robin), so the
+-- Lua work and ground ray casts per frame stay small
+local MOVES_PER_FRAME = { low = 2, medium = 3, high = 4, ultra = 6 }
+local moveCursor = 0
 local RADIUS = 22        -- metres around the camera
 local MIN_RADIUS = 0.8   -- not right on top of the camera
 
@@ -59,7 +63,7 @@ local function makeDatablocks()
   local ok = true
   ok = ok and makeDatablock("ParticleData", NAMES.dropData, {
     textureName = "/art/beamng_weather/splash_droplet.png",
-    lifetimeMS = 300, lifetimeVarianceMS = 90,
+    lifetimeMS = 260, lifetimeVarianceMS = 70,
     gravityCoefficient = 1.6, dragCoefficient = 0.6, inheritedVelFactor = 0,
     windCoefficient = 0.2, useInvAlpha = 0,
     spinRandomMin = 0, spinRandomMax = 0,
@@ -82,19 +86,19 @@ local function makeDatablocks()
   -- Crown: a burst of drops thrown up in a cone
   ok = ok and makeDatablock("ParticleEmitterData", NAMES.crownEmitter, {
     particles = NAMES.dropData,
-    ejectionPeriodMS = 3, periodVarianceMS = 1,
+    ejectionPeriodMS = 8, periodVarianceMS = 2,
     ejectionVelocity = 1.5, velocityVariance = 0.7, ejectionOffset = 0.01,
     thetaMin = 5, thetaMax = 40, phiReferenceVel = 0, phiVariance = 360,
-    blendStyle = "NORMAL", softnessDistance = 0.05,
+    blendStyle = "NORMAL", softnessDistance = 0,
   })
   -- Ripple: one flat ring per spot, lying on the ground
   ok = ok and makeDatablock("ParticleEmitterData", NAMES.rippleEmitter, {
     particles = NAMES.rippleData,
-    ejectionPeriodMS = 14, periodVarianceMS = 4,
+    ejectionPeriodMS = 30, periodVarianceMS = 6,
     ejectionVelocity = 0, velocityVariance = 0, ejectionOffset = 0.01,
     thetaMin = 0, thetaMax = 0, phiVariance = 0,
     alignParticles = 1, alignDirection = "0 0 1",
-    blendStyle = "NORMAL", softnessDistance = 0.02,
+    blendStyle = "NORMAL", softnessDistance = 0,
   })
   ok = ok and makeDatablock("ParticleEmitterNodeData", NAMES.nodeData, { timeMultiple = 1 })
   return ok
@@ -182,27 +186,34 @@ local function setActive(n, on)
   n.on = on
 end
 
+local function moveNode(n, cam)
+  local a = math.random() * 2 * math.pi
+  local r = MIN_RADIUS + (RADIUS - MIN_RADIUS) * (math.random() ^ 1.6)
+  local x, y = cam.x + math.cos(a) * r, cam.y + math.sin(a) * r
+  local z = groundZ(x, y, cam.z)
+  if not z then return false end -- nowhere to land (over water, off the map)
+  local p = vec3(x, y, z + 0.01)
+  pcall(function() n.crown:setPosition(p) end)
+  pcall(function() n.ripple:setPosition(p) end)
+  return true
+end
+
 function M.onUpdate(dtReal)
   if not ready then return end
+  local want = enabled and math.floor(#nodes * math.min(1, intensity * 1.15) + 0.5) or 0
+  if want == 0 then
+    for _, n in ipairs(nodes) do setActive(n, false) end
+    return
+  end
   local cam = cameraPos()
-  local want = (enabled and cam) and math.floor(#nodes * math.min(1, intensity * 1.15) + 0.5) or 0
-  for i, n in ipairs(nodes) do
-    local on = i <= want
-    if on then
-      -- New random spot on the ground: more splashes close to the camera
-      local a = math.random() * 2 * math.pi
-      local r = MIN_RADIUS + (RADIUS - MIN_RADIUS) * (math.random() ^ 1.6)
-      local x, y = cam.x + math.cos(a) * r, cam.y + math.sin(a) * r
-      local z = groundZ(x, y, cam.z)
-      if z then
-        local p = vec3(x, y, z + 0.01)
-        pcall(function() n.crown:setPosition(p) end)
-        pcall(function() n.ripple:setPosition(p) end)
-      else
-        on = false -- nowhere to land (over water, off the map)
-      end
-    end
-    setActive(n, on)
+  if not cam then return end
+  for i = want + 1, #nodes do setActive(nodes[i], false) end
+  -- Move a few of the active emitters to new spots this frame
+  local moves = math.min(want, MOVES_PER_FRAME[quality] or 4)
+  for _ = 1, moves do
+    moveCursor = moveCursor % want + 1
+    local n = nodes[moveCursor]
+    setActive(n, moveNode(n, cam))
   end
 end
 

@@ -272,9 +272,12 @@
       var ctx = canvas.getContext('2d');
       var W = 0, H = 0, scale = 1;
 
+      // Drawn at half resolution and stretched to the screen: drops are soft
+      // anyway, and it is 4x less work for the game to show the UI layer
+      var RES = 0.5;
       function resize() {
-        W = canvas.width = window.innerWidth;
-        H = canvas.height = window.innerHeight;
+        W = canvas.width = Math.max(1, Math.round(window.innerWidth * RES));
+        H = canvas.height = Math.max(1, Math.round(window.innerHeight * RES));
         scale = H / 1080;
       }
       resize();
@@ -306,9 +309,10 @@
       })();
 
       var trails = [];           // wet streaks left by running drops
-      var MAX_TRAILS = 600;
+      var MAX_TRAILS = 300;
+      var CAPS = { low: [200, 100], medium: [350, 180], high: [550, 300], ultra: [850, 450] };
       var drops = [];
-      var MAX_DROPS = 1400;
+      var MAX_DROPS = 550;
       var spawnAcc = 0;
 
       // Wipers: two arms with pivots at the bottom of the screen
@@ -387,24 +391,38 @@
       scope.overlayCount = 0;
       var last = performance.now();
       var running = true;
+      var FRAME_MS = 1000 / 30;   // 30 FPS is plenty for drops on glass
+      var canvasDirty = false;
       function frame(now) {
         if (!running) return;
+        if (now - last < FRAME_MS - 1) { requestAnimationFrame(frame); return; }
         var dt = Math.min(0.1, (now - last) / 1000);
         last = now;
         var d = scope.d, f = d.features || {};
         var show = f.windshield && (d.inCar || f.allCameras) && !d.paused;
+        var caps = CAPS[d.quality] || CAPS.high;
+        MAX_DROPS = caps[0]; MAX_TRAILS = caps[1];
         countTimer += dt;
         if (countTimer > 0.5) { countTimer = 0; var c = drops.length; scope.$evalAsync(function () { scope.overlayCount = c; }); }
-        ctx.clearRect(0, 0, W, H);
 
-        if (!show) { drops.length = 0; trails.length = 0; requestAnimationFrame(frame); return; }
+        // Nothing to draw: clear once, then leave the canvas alone so the
+        // game doesn't have to redraw the UI layer every frame
+        var idle = !show || ((d.intensity || 0) <= 0 && drops.length === 0 && trails.length === 0 && wiper.phase === 0);
+        if (idle) {
+          if (!show) { drops.length = 0; trails.length = 0; }
+          if (canvasDirty) { ctx.clearRect(0, 0, W, H); canvasDirty = false; }
+          requestAnimationFrame(frame);
+          return;
+        }
+        ctx.clearRect(0, 0, W, H);
+        canvasDirty = true;
 
         var inCar = d.inCar;
         var speed = d.speed || 0;         // m/s
         var rain = d.intensity || 0;
 
         // New drops: more when it rains harder and when driving fast
-        var rate = rain * 220 * (inCar ? (1 + speed / 18) : 0.35);
+        var rate = rain * 120 * (inCar ? (1 + speed / 18) : 0.35);
         spawnAcc += rate * dt;
         while (spawnAcc >= 1 && drops.length < MAX_DROPS) {
           spawnAcc -= 1;

@@ -153,6 +153,7 @@ local function isPaused()
 end
 
 -- Short report for the panel's diagnostics line
+local diagCache, diagTimer = nil, 0
 local function diagnostics()
   local d = {}
   if beamngWeather_precipitation and beamngWeather_precipitation.getDebugInfo then
@@ -184,7 +185,7 @@ local function sendUI()
     wetSeconds = math.floor(1 / settings.wetRate + 0.5),
     drySeconds = math.floor(1 / settings.dryRate + 0.5),
     paused     = isPaused(),
-    diag       = diagnostics(),
+    diag       = diagCache,
   })
 end
 
@@ -319,7 +320,7 @@ function M.debug()
   for k, v in pairs(settings.features) do f[#f + 1] = k .. "=" .. tostring(v) end
   add("features", f)
   if beamngWeather_precipitation and beamngWeather_precipitation.getDebugInfo then
-    for k, v in pairs(beamngWeather_precipitation.getDebugInfo()) do add("rain." .. k, v) end
+    for k, v in pairs(beamngWeather_precipitation.getDebugInfo(true)) do add("rain." .. k, v) end
   end
   for k, v in pairs(diagnostics()) do add("status." .. k, v) end
   local text = "BeamNG Weather debug:\n" .. table.concat(lines, "\n")
@@ -367,6 +368,9 @@ function M.onUpdate(dtReal, dtSim, dtRaw)
     local ok, err = pcall(pushToModules, false)
     if not ok then log("E", logTag, "Update failed: " .. tostring(err)) end
   end
+
+  diagTimer = diagTimer - dt
+  if diagTimer <= 0 then diagTimer = 1; diagCache = diagnostics() end
 
   uiTimer = uiTimer + dt
   if uiTimer >= 0.1 then

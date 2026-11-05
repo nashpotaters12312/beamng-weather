@@ -77,6 +77,13 @@ tools/
 
 **Advanced → Diagnostics** in the panel shows what the mod found: rain layers, splash emitters, car paint and glass materials, road materials, and the camera. If something doesn't show in game, send a screenshot of this section.
 
+## Performance
+
+If the game runs slowly in the rain, try these in order:
+1. **Advanced → Rain quality → Low or Medium.** This lowers the number of rain drops, ground splashes and windshield drops.
+2. Turn off **3D splashes**.
+3. Turn off **Windshield**. The windshield overlay makes the game redraw its UI layer while it's raining.
+
 ## Known limits and things to test
 
 This mod was written without the game running, so it needs testing in game. Every game call is wrapped in a safety check: if a feature doesn't work in your game version, it turns itself off and writes a line starting `beamngWeather` to the log (`beamng.log`). The rest keeps working.
