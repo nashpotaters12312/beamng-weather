@@ -123,6 +123,8 @@
               '<div><span>Car drops</span><b>{{ d.diag.carDrops || "-" }}</b></div>',
               '<div><span>Wet roads</span><b>{{ d.diag.roads || "-" }}</b></div>',
               '<div><span>Camera</span><b>{{ d.camera }}{{ d.inCar ? " (in car)" : "" }}</b></div>',
+              '<div><span>Camera to car</span><b>{{ d.camDist != null ? d.camDist + " m" : "unknown" }}</b></div>',
+              '<div><span>Game paused</span><b>{{ d.paused ? "yes" : "no" }}</b></div>',
               '<div><span>Windshield drops drawn</span><b>{{ overlayCount }}</b></div>',
             '</div>',
           '</div>',
@@ -174,9 +176,10 @@
           var f = scope.d.features || {};
           var cam = scope.d.camera || 'unknown';
           if (!f.windshield) return 'Windshield drops are off';
+          if (scope.d.paused) return 'Game paused: windshield drops hidden';
           if (scope.d.inCar) return 'Windshield drops on (camera: ' + cam + ')';
           if (f.allCameras) return 'Lens drops on (camera: ' + cam + ')';
-          return 'Windshield drops show in the driver camera (now: ' + cam + '). Press C to switch.';
+          return 'Windshield drops show from inside the car (now: ' + cam + '). Press C to switch, or turn on Lens drops.';
         };
         scope.pct = function (v) { return Math.round((v || 0) * 100) + '%'; };
         scope.sliderStyle = function (v, min, max) {

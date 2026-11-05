@@ -132,6 +132,30 @@ local function isInCarCamera(cam)
   return false
 end
 
+-- Is the camera physically inside the player's car? Works whatever the
+-- camera is called: the driver seat is within ~2.5 m of the car's reference
+-- point, while outside cameras are further away.
+local IN_CAR_DISTANCE = 2.5
+local function cameraInsideCar()
+  local veh = (getPlayerVehicle and getPlayerVehicle(0)) or (be and be:getPlayerVehicle(0))
+  if not veh then return false, nil end
+  local camPos
+  if core_camera and core_camera.getPosition then
+    local ok, p = pcall(core_camera.getPosition)
+    if ok and p then camPos = p end
+  end
+  if not camPos and getCameraPosition then
+    local ok, p = pcall(getCameraPosition)
+    if ok and p then camPos = p end
+  end
+  if not camPos then return false, nil end
+  local ok, vp = pcall(function() return veh:getPosition() end)
+  if not ok or not vp then return false, nil end
+  local dx, dy, dz = camPos.x - vp.x, camPos.y - vp.y, camPos.z - vp.z
+  local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+  return dist <= IN_CAR_DISTANCE, dist
+end
+
 local function playerSpeed()
   local veh = (getPlayerVehicle and getPlayerVehicle(0)) or (be and be:getPlayerVehicle(0))
   if not veh then return 0, nil end
@@ -147,7 +171,10 @@ local function isPaused()
     function() return bullettime and bullettime.getPause and bullettime.getPause() end,
   }) do
     local ok, v = pcall(get)
-    if ok and v ~= nil then return v and true or false end
+    -- Only trust a real yes/no answer. In Lua the number 0 counts as true,
+    -- so a numeric answer is compared explicitly.
+    if ok and type(v) == "boolean" then return v end
+    if ok and type(v) == "number" then return v ~= 0 end
   end
   return false
 end
@@ -164,6 +191,7 @@ local function diagnostics()
   if beamngWeather_wetDroplets and beamngWeather_wetDroplets.getStatus then d.carDrops = beamngWeather_wetDroplets.getStatus() end
   if beamngWeather_wetRoads and beamngWeather_wetRoads.getStatus then d.roads = beamngWeather_wetRoads.getStatus() end
   d.mapLoaded = levelReady
+  d.paused = isPaused()
   return d
 end
 
@@ -171,6 +199,8 @@ local function sendUI()
   if not guihooks then return end
   local speed = playerSpeed()
   local cam = cameraName()
+  local inside, camDist = cameraInsideCar()
+  local inCar = isInCarCamera(cam) or inside
   guihooks.trigger("BeamNGWeatherUpdate", {
     rainOn     = settings.rainOn,
     target     = settings.intensity,
@@ -179,7 +209,8 @@ local function sendUI()
     wipers     = settings.wipers,
     speed      = speed,
     camera     = cam,
-    inCar      = isInCarCamera(cam),
+    inCar      = inCar,
+    camDist    = camDist and math.floor(camDist * 10 + 0.5) / 10 or nil,
     quality    = settings.quality,
     features   = settings.features,
     wetSeconds = math.floor(1 / settings.wetRate + 0.5),
